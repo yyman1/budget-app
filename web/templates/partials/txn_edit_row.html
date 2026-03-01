@@ -1,0 +1,42 @@
+<tr id="txn-{{ txn.id }}" class="table-warning">
+    <td><input type="date" class="form-control form-control-sm" name="date" value="{{ txn.date }}" form="edit-{{ txn.id }}" required></td>
+    <td><input type="text" class="form-control form-control-sm" name="merchant" value="{{ txn.merchant }}" form="edit-{{ txn.id }}"></td>
+    <td>
+        <select class="form-select form-select-sm" name="category_id" form="edit-{{ txn.id }}">
+            <option value="">—</option>
+            {% for c in categories %}
+            <option value="{{ c.id }}" {% if txn.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+        </select>
+    </td>
+    <td>
+        <select class="form-select form-select-sm" name="account_id" form="edit-{{ txn.id }}">
+            <option value="">—</option>
+            {% for a in accounts %}
+            <option value="{{ a.id }}" {% if txn.account_id == a.id %}selected{% endif %}>{{ a.name }}</option>
+            {% endfor %}
+        </select>
+    </td>
+    <td>
+        <select class="form-select form-select-sm" name="type" form="edit-{{ txn.id }}">
+            <option value="expense" {% if txn.type == 'expense' %}selected{% endif %}>expense</option>
+            <option value="income" {% if txn.type == 'income' %}selected{% endif %}>income</option>
+            <option value="transfer" {% if txn.type == 'transfer' %}selected{% endif %}>transfer</option>
+        </select>
+    </td>
+    <td><input type="number" step="0.01" class="form-control form-control-sm text-end" name="amount" value="{{ '%.2f'|format(txn.amount) }}" form="edit-{{ txn.id }}" required></td>
+    <td><small class="text-muted">{{ txn.source }}</small></td>
+    <td class="text-nowrap">
+        <form id="edit-{{ txn.id }}"
+              hx-post="/transactions/{{ txn.id }}/update"
+              hx-target="#txn-{{ txn.id }}"
+              hx-swap="outerHTML"
+              style="display:inline">
+            <button type="submit" class="btn btn-sm btn-success me-1">&#10003;</button>
+        </form>
+        <button class="btn btn-sm btn-outline-secondary"
+                hx-get="/transactions/{{ txn.id }}/display-row"
+                hx-target="#txn-{{ txn.id }}"
+                hx-swap="outerHTML">&#10005;</button>
+    </td>
+</tr>

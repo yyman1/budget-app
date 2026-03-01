@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Accounts - Erlichman Household Budget{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Accounts</h2>
+
+<div class="row">
+    <div class="col-md-8">
+        <table class="table table-hover">
+            <thead>
+                <tr><th>Name</th><th>Type</th><th>Institution</th><th>Last 4</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for a in accounts %}
+                <tr class="{% if not a.is_active %}table-secondary{% endif %}">
+                    <td>{{ a.name }}</td>
+                    <td>{{ a.account_type | replace('_', ' ') | title }}</td>
+                    <td>{{ a.institution }}</td>
+                    <td>{{ a.last_four or '—' }}</td>
+                    <td>
+                        {% if a.is_active %}
+                        <span class="badge bg-success">Active</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <form method="POST" action="/accounts/{{ a.id }}/toggle" style="display:inline">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                {{ "Deactivate" if a.is_active else "Activate" }}
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">Add Account</div>
+            <div class="card-body">
+                <form method="POST" action="/accounts/add">
+                    <div class="mb-3">
+                        <input type="text" class="form-control" name="name" placeholder="Account Name" required>
+                    </div>
+                    <div class="mb-3">
+                        <select class="form-select" name="account_type" required>
+                            <option value="credit_card">Credit Card</option>
+                            <option value="bank">Bank Account</option>
+                            <option value="loan">Loan</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <input type="text" class="form-control" name="institution" placeholder="Institution (e.g., Chase)">
+                    </div>
+                    <div class="mb-3">
+                        <input type="text" class="form-control" name="last_four" placeholder="Last 4 digits" maxlength="4">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Account</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

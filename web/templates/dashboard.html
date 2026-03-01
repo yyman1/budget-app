@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Erlichman Household Budget{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <a href="?month={{ prev_month }}" class="btn btn-outline-secondary">&larr; {{ prev_month }}</a>
+    <h2 class="mb-0">{{ month }}</h2>
+    <a href="?month={{ next_month }}" class="btn btn-outline-secondary">{{ next_month }} &rarr;</a>
+</div>
+
+<div class="row mb-4 g-3">
+    <div class="col-md-3">
+        <div class="card card-stat">
+            <div class="value text-success">{{ income|money }}</div>
+            <div class="label">Income</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-stat">
+            <div class="value text-danger">{{ expenses|money }}</div>
+            <div class="label">Expenses</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-stat">
+            <div class="value {% if net >= 0 %}text-success{% else %}text-danger{% endif %}">{{ net|money }}</div>
+            <div class="label">Net Balance</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-stat">
+            <div class="value text-muted">{{ transfers|money }}</div>
+            <div class="label">Transfers</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">Spending by Group</div>
+            <div class="card-body">
+                {% if group_spending %}
+                <canvas id="groupChart" height="300"></canvas>
+                {% else %}
+                <p class="text-muted">No expense data for this month yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">Budget vs Actual</div>
+            <div class="card-body p-0">
+                {% if budgets %}
+                <table class="table table-sm mb-0">
+                    <thead><tr><th class="ps-3">Category</th><th class="text-end">Budget</th><th class="text-end">Spent</th><th style="width:30%">Progress</th></tr></thead>
+                    <tbody>
+                    {% for name, group_name, limit, spent in budgets %}
+                        {% set pct = (spent / limit * 100) if limit > 0 else 0 %}
+                        <tr>
+                            <td class="ps-3"><small class="text-muted">{{ group_name }}</small><br>{{ name }}</td>
+                            <td class="text-end">{{ limit|money(0) }}</td>
+                            <td class="text-end">{{ spent|money(0) }}</td>
+                            <td>
+                                <div class="budget-bar">
+                                    <div class="budget-bar-fill {% if pct <= 75 %}ok{% elif pct <= 100 %}warn{% else %}over{% endif %}"
+                                         style="width: {{ [pct, 100] | min }}%"></div>
+                                </div>
+                                <small>{{ "%.0f"|format(pct) }}%</small>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="text-muted p-3">No budgets set for this month.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── 6-Month Spending Trend ── #}
+{% if trend_months %}
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header">6-Month Trend</div>
+            <div class="card-body">
+                <canvas id="trendChart" height="120"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+{% if group_spending %}
+<script>
+const ctx = document.getElementById('groupChart').getContext('2d');
+const colors = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c','#3498db','#9b59b6','#34495e','#e84393','#95a5a6','#d35400','#27ae60','#8e44ad','#16a085','#d63031'];
+new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+        labels: {{ group_spending | map(attribute=0) | list | tojson }},
+        datasets: [{
+            data: {{ group_spending | map(attribute=1) | list | tojson }},
+            backgroundColor: colors.slice(0, {{ group_spending | length }}),
+            borderWidth: 0,
+        }]
+    },
+    options: {
+        responsive: true,
+        cutout: '55%',
+        plugins: {
+            legend: { position: 'right', labels: { font: { size: 12, family: 'Inter' }, padding: 12 } },
+            tooltip: {
+                callbacks: {
+                    label: ctx => ctx.label + ': $' + ctx.raw.toLocaleString(undefined, {minimumFractionDigits: 2})
+                }
+            }
+        }
+    }
+});
+</script>
+{% endif %}
+{% if trend_months %}
+<script>
+const trendCtx = document.getElementById('trendChart').getContext('2d');
+const trendMonths = {{ trend_months | tojson }};
+const trendIncome = {{ trend_income | tojson }};
+const trendExpenses = {{ trend_expenses | tojson }};
+const trendNet = trendIncome.map((v, i) => +(v - trendExpenses[i]).toFixed(2));
+
+new Chart(trendCtx, {
+    type: 'bar',
+    data: {
+        labels: trendMonths,
+        datasets: [
+            {
+                label: 'Income',
+                data: trendIncome,
+                backgroundColor: 'rgba(46, 204, 113, 0.75)',
+                borderRadius: 4,
+                order: 2,
+            },
+            {
+                label: 'Expenses',
+                data: trendExpenses,
+                backgroundColor: 'rgba(231, 76, 60, 0.75)',
+                borderRadius: 4,
+                order: 2,
+            },
+            {
+                label: 'Net',
+                data: trendNet,
+                type: 'line',
+                borderColor: '#3498db',
+                backgroundColor: 'rgba(52, 152, 219, 0.08)',
+                borderWidth: 2.5,
+                pointRadius: 5,
+                pointBackgroundColor: '#3498db',
+                fill: true,
+                tension: 0.3,
+                order: 1,
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+            y: {
+                ticks: {
+                    callback: v => '$' + v.toLocaleString(),
+                    font: { family: 'Inter' }
+                },
+                grid: { color: 'rgba(0,0,0,0.04)' }
+            },
+            x: {
+                grid: { display: false },
+                ticks: { font: { family: 'Inter' } }
+            }
+        },
+        plugins: {
+            legend: { labels: { font: { size: 12, family: 'Inter' }, padding: 16 } },
+            tooltip: {
+                callbacks: {
+                    label: ctx => ctx.dataset.label + ': $' + ctx.raw.toLocaleString(undefined, {minimumFractionDigits: 2})
+                }
+            }
+        }
+    }
+});
+</script>
+{% endif %}
+{% endblock %}

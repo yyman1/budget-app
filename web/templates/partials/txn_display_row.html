@@ -1,0 +1,18 @@
+<tr id="txn-{{ txn.id }}">
+    <td>{{ txn.date }}</td>
+    <td>{{ txn.merchant }}</td>
+    <td>{{ txn.category.name if txn.category else '—' }}</td>
+    <td>{{ txn.account.name if txn.account else '—' }}</td>
+    <td><span class="badge {% if txn.type == 'income' %}bg-success{% elif txn.type == 'transfer' %}bg-secondary{% else %}bg-danger{% endif %}">{{ txn.type }}</span></td>
+    <td class="text-end">{{ txn.amount|money }}</td>
+    <td><small class="text-muted">{{ txn.source }}</small></td>
+    <td class="text-nowrap">
+        <button class="btn btn-sm btn-outline-primary me-1"
+                hx-get="/transactions/{{ txn.id }}/edit-row"
+                hx-target="#txn-{{ txn.id }}"
+                hx-swap="outerHTML">&#9998;</button>
+        <form method="POST" action="/transactions/{{ txn.id }}/delete" style="display:inline">
+            <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete?')">x</button>
+        </form>
+    </td>
+</tr>

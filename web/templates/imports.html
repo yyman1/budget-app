@@ -1,0 +1,747 @@
+{% extends "base.html" %}
+{% block title %}Import - Erlichman Household Budget{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Import Data</h2>
+
+{# ══════════════════════════════════════════════════════
+   STEP 1: Pick a sheet tab
+   ══════════════════════════════════════════════════════ #}
+<div class="card mb-4">
+    <div class="card-header fw-bold">
+        Step 1: Choose Sheet Tab
+        {% if step == 1 %}
+        <span class="badge bg-primary float-end">Current Step</span>
+        {% elif step > 1 %}
+        <span class="badge bg-success float-end">Done</span>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <form method="post" action="/import/months">
+            <div class="row align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label" for="tab-select">Sheet Tab</label>
+                    <select class="form-select" id="tab-select" name="tab" required>
+                        <option value="">Select a tab...</option>
+                        {% for tab in tabs %}
+                        <option value="{{ tab }}" {% if selected_tab == tab %}selected{% endif %}>{{ tab }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary">
+                        Load Months
+                    </button>
+                </div>
+            </div>
+            <p class="text-muted small mt-2 mb-0">
+                Select "Expense" for 2019-present, or "Expense Archive" for 2016-2018.
+            </p>
+        </form>
+    </div>
+</div>
+
+{# ══════════════════════════════════════════════════════
+   STEP 2: Select months (only shown after step 1)
+   ══════════════════════════════════════════════════════ #}
+{% if step >= 2 and months is defined %}
+<div class="card mb-4">
+    <div class="card-header fw-bold">
+        Step 2: Select Months to Import
+        {% if step == 2 %}
+        <span class="badge bg-primary float-end">Current Step</span>
+        {% elif step > 2 %}
+        <span class="badge bg-success float-end">Done</span>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <form method="post" action="/import/preview">
+            <input type="hidden" name="tab" value="{{ selected_tab }}">
+            <p class="mb-2">Check the months you want to import, then click <strong>Preview</strong>.</p>
+
+            <div class="row">
+                {% for m in months|reverse %}
+                {% if loop.index0 % 4 == 0 %}
+                <div class="col-md-3">
+                {% endif %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="months"
+                               value="{{ m.month }}" id="m-{{ m.month }}"
+                               {% if m.imported %}disabled{% endif %}>
+                        <label class="form-check-label {% if m.imported %}text-muted{% endif %}" for="m-{{ m.month }}">
+                            {{ m.label }}
+                            {% if m.imported %}<small>(imported)</small>{% endif %}
+                        </label>
+                    </div>
+                {% if loop.index0 % 4 == 3 or loop.last %}
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+
+            <button type="submit" class="btn btn-primary mt-3">
+                Preview Import
+            </button>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{# ══════════════════════════════════════════════════════
+   STEP 3: Preview & Commit (only shown after step 2)
+   ══════════════════════════════════════════════════════ #}
+{% if step >= 3 and staged is defined %}
+<div class="card mb-4">
+    <div class="card-header fw-bold">
+        Step 3: Review & Commit
+        <span class="badge bg-primary float-end">Current Step</span>
+    </div>
+    <div class="card-body">
+        {# Summary bar #}
+        <div class="d-flex gap-3 mb-3 flex-wrap">
+            {% if summary.ready %}
+            <span class="badge bg-success fs-6">{{ summary.ready }} Ready</span>
+            {% endif %}
+            {% if summary.duplicate %}
+            <span class="badge bg-secondary fs-6">{{ summary.duplicate }} Duplicate</span>
+            {% endif %}
+            {% if summary.unmatched %}
+            <span class="badge bg-warning text-dark fs-6">{{ summary.unmatched }} Unmatched</span>
+            {% endif %}
+            {% if summary.skipped %}
+            <span class="badge bg-light text-muted border fs-6">{{ summary.skipped }} Skipped</span>
+            {% endif %}
+        </div>
+
+        {% if summary.unmatched > 0 %}
+        <div class="alert alert-warning py-2">
+            <strong>{{ summary.unmatched }} merchant(s)</strong> have no mapping.
+            Use the dropdowns below to assign a category, then click <strong>Map</strong>.
+            After mapping, click "Preview Import" again in Step 2 to refresh.
+        </div>
+        {% endif %}
+
+        <form method="post" action="/import/commit">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th style="width:30px">
+                                <input type="checkbox" id="check-all" checked
+                                       onclick="document.querySelectorAll('input[name=commit_refs]:not(:disabled)').forEach(c => c.checked = this.checked)">
+                            </th>
+                            <th>Merchant</th>
+                            <th>Date</th>
+                            <th class="text-end">Amount</th>
+                            <th>Category</th>
+                            <th>Account</th>
+                            <th>Status</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in staged %}
+                        {% if s.status == 'ready' %}
+                        <tr>
+                            <td><input type="checkbox" name="commit_refs" value="{{ s.source_ref }}" checked></td>
+                            <td>{{ s.merchant }}</td>
+                            <td>{{ s.date }}</td>
+                            <td class="text-end">{{ s.amount|money }}</td>
+                            <td><small>{{ s.category_name }}</small></td>
+                            <td><small>{{ s.account_name }}</small></td>
+                            <td><span class="badge bg-success">ready</span></td>
+                            <td></td>
+                        </tr>
+                        {% elif s.status == 'duplicate' %}
+                        <tr class="table-light text-muted">
+                            <td><input type="checkbox" disabled></td>
+                            <td>{{ s.merchant }}</td>
+                            <td>{{ s.date }}</td>
+                            <td class="text-end">{{ s.amount|money }}</td>
+                            <td><small>{{ s.category_name }}</small></td>
+                            <td><small>{{ s.account_name }}</small></td>
+                            <td><span class="badge bg-secondary">duplicate</span></td>
+                            <td class="small">Already imported</td>
+                        </tr>
+                        {% elif s.status == 'unmatched' %}
+                        <tr class="table-warning" id="row-{{ loop.index }}">
+                            <td><input type="checkbox" disabled></td>
+                            <td><strong>{{ s.merchant }}</strong></td>
+                            <td>{{ s.date }}</td>
+                            <td class="text-end">{{ s.amount|money }}</td>
+                            <td colspan="2">
+                                <div class="d-flex gap-1 align-items-center flex-wrap">
+                                    <select class="form-select form-select-sm" style="max-width:180px" id="cat-{{ loop.index }}">
+                                        <option value="">Category...</option>
+                                        {% for cat in categories %}
+                                        <option value="{{ cat.id }}">{{ cat.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <select class="form-select form-select-sm" style="max-width:160px" id="acct-{{ loop.index }}">
+                                        <option value="">Account (opt)...</option>
+                                        {% for acct in accounts %}
+                                        <option value="{{ acct.id }}">{{ acct.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="button" class="btn btn-sm btn-outline-primary"
+                                            hx-post="/import/add-mapping"
+                                            hx-vals='{"merchant_name": "{{ s.merchant }}"}'
+                                            hx-include="#cat-{{ loop.index }}, #acct-{{ loop.index }}"
+                                            hx-target="#row-{{ loop.index }}"
+                                            hx-swap="innerHTML">
+                                        Map
+                                    </button>
+                                </div>
+                            </td>
+                            <td><span class="badge bg-warning text-dark">unmatched</span></td>
+                            <td></td>
+                        </tr>
+                        {% elif s.status == 'skipped' %}
+                        <tr class="text-muted small">
+                            <td><input type="checkbox" disabled></td>
+                            <td>{{ s.merchant }}</td>
+                            <td>{{ s.date }}</td>
+                            <td class="text-end">{{ s.amount_str or '(empty)' }}</td>
+                            <td></td>
+                            <td></td>
+                            <td><span class="badge bg-light text-muted border">skipped</span></td>
+                            <td>{{ s.skip_reason }}</td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if summary.ready > 0 %}
+            <button type="submit" class="btn btn-success btn-lg">
+                Commit {{ summary.ready }} Transaction{{ 's' if summary.ready != 1 else '' }}
+            </button>
+            <p class="text-muted small mt-1">
+                Uncheck any rows you don't want to import. Duplicates and skipped rows are excluded automatically.
+            </p>
+            {% else %}
+            <div class="alert alert-info">
+                No transactions ready to commit.
+                {% if summary.unmatched > 0 %}Map the unmatched merchants above, then re-run the preview.{% endif %}
+                {% if summary.duplicate > 0 and summary.unmatched == 0 %}All transactions were already imported.{% endif %}
+            </div>
+            {% endif %}
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{# ══════════════════════════════════════════════════════
+   Statement Import from Google Drive
+   ══════════════════════════════════════════════════════ #}
+<hr class="my-5">
+<h3 class="mb-3">Statement Import (Chase PDF)</h3>
+
+{# -- S1: Pick folder & load statements -- #}
+<div class="card mb-4">
+    <div class="card-header fw-bold">
+        Choose Drive Folder
+        {% if stmt_step is defined and stmt_step != 'list' and stmt_step != 'preview' %}
+        <span class="badge bg-primary float-end">Current Step</span>
+        {% elif stmt_step is defined %}
+        <span class="badge bg-success float-end">Done</span>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <form method="post" action="/import/statements">
+            <div class="row align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label" for="folder-select">Drive Folder</label>
+                    <select class="form-select" id="folder-select" name="folder_idx" required>
+                        <option value="">Select a folder...</option>
+                        {% for f in stmt_folders or config_folders %}
+                        <option value="{{ loop.index0 }}"
+                                {% if stmt_folder_idx is defined and stmt_folder_idx == loop.index0 %}selected{% endif %}>
+                            {{ f.label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary">Load Statements</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# -- S1 result: list of available PDFs -- #}
+{% if stmt_step is defined and stmt_step in ('list', 'preview') and stmt_pdfs is defined %}
+<div class="card mb-4">
+    <div class="card-header fw-bold">
+        Available Statements — {{ stmt_folder.label }}
+        {% if stmt_step == 'list' %}
+        <span class="badge bg-primary float-end">Select a Statement</span>
+        {% else %}
+        <span class="badge bg-success float-end">Done</span>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <div class="list-group">
+            {% for p in stmt_pdfs %}
+            <div class="list-group-item d-flex justify-content-between align-items-center
+                        {% if p.imported %}list-group-item-light{% endif %}">
+                <div>
+                    <strong>{{ p.statement_date }}</strong>
+                    <small class="text-muted ms-2">{{ p.name }}</small>
+                    {% if p.imported %}
+                    <span class="badge bg-secondary ms-2">imported</span>
+                    {% endif %}
+                </div>
+                <form method="post" action="/import/statement-preview" class="d-inline">
+                    <input type="hidden" name="file_id" value="{{ p.id }}">
+                    <input type="hidden" name="file_name" value="{{ p.name }}">
+                    <input type="hidden" name="statement_date" value="{{ p.statement_date }}">
+                    <input type="hidden" name="folder_idx" value="{{ stmt_folder_idx }}">
+                    <button type="submit" class="btn btn-sm btn-outline-primary">
+                        Preview
+                    </button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# -- S2: Preview parsed transactions -- #}
+{% if stmt_step is defined and stmt_step == 'preview' and stmt_staged is defined %}
+<div class="card mb-4">
+    <div class="card-header fw-bold">
+        Preview: {{ stmt_file_name }} ({{ stmt_statement_date }})
+        <span class="badge bg-primary float-end">Review & Commit</span>
+    </div>
+    <div class="card-body">
+        {# Summary bar #}
+        <div class="d-flex gap-3 mb-3 flex-wrap">
+            {% if stmt_summary.ready %}
+            <span class="badge bg-success fs-6">{{ stmt_summary.ready }} Ready</span>
+            {% endif %}
+            {% if stmt_summary.duplicate %}
+            <span class="badge bg-secondary fs-6">{{ stmt_summary.duplicate }} Duplicate</span>
+            {% endif %}
+            {% if stmt_summary.unmatched %}
+            <span class="badge bg-warning text-dark fs-6">{{ stmt_summary.unmatched }} Unmatched</span>
+            {% endif %}
+            {% if stmt_summary.payment %}
+            <span class="badge bg-info fs-6">{{ stmt_summary.payment }} Payment/Credit</span>
+            {% endif %}
+        </div>
+
+        {% if stmt_summary.unmatched > 0 %}
+        <div class="alert alert-warning py-2">
+            <strong>{{ stmt_summary.unmatched }} merchant(s)</strong> have no mapping.
+            Use the dropdowns below to assign a category, then click <strong>Map</strong>.
+            After mapping, re-click "Preview" to refresh.
+        </div>
+        {% endif %}
+
+        <form method="post" action="/import/statement-commit">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th style="width:30px">
+                                <input type="checkbox" id="stmt-check-all" checked
+                                       onclick="document.querySelectorAll('input[name=commit_refs]:not(:disabled)').forEach(c => c.checked = this.checked)">
+                            </th>
+                            <th>Merchant</th>
+                            <th>Date</th>
+                            <th class="text-end">Amount</th>
+                            <th>Card</th>
+                            <th>Category</th>
+                            <th>Account</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in stmt_staged %}
+                        {% if s.status == 'ready' %}
+                        <tr>
+                            <td><input type="checkbox" name="commit_refs" value="{{ s.source_ref }}" checked></td>
+                            <td>{{ s.merchant }}</td>
+                            <td>{{ s.date }}</td>
+                            <td class="text-end">{{ s.amount|money }}</td>
+                            <td><small>{{ s.card_last_four }}</small></td>
+                            <td><small>{{ s.category_name }}</small></td>
+                            <td><small>{{ s.account_name }}</small></td>
+                            <td><span class="badge bg-success">ready</span></td>
+                        </tr>
+                        {% elif s.status == 'duplicate' %}
+                        <tr class="table-light text-muted">
+                            <td><input type="checkbox" disabled></td>
+                            <td>{{ s.merchant }}</td>
+                            <td>{{ s.date }}</td>
+                            <td class="text-end">{{ s.amount|money }}</td>
+                            <td><small>{{ s.card_last_four }}</small></td>
+                            <td></td>
+                            <td></td>
+                            <td><span class="badge bg-secondary">duplicate</span></td>
+                        </tr>
+                        {% elif s.status == 'unmatched' %}
+                        <tr class="table-warning" id="srow-{{ loop.index }}">
+                            <td><input type="checkbox" disabled></td>
+                            <td><strong>{{ s.merchant }}</strong></td>
+                            <td>{{ s.date }}</td>
+                            <td class="text-end">{{ s.amount|money }}</td>
+                            <td><small>{{ s.card_last_four }}</small></td>
+                            <td colspan="2">
+                                <div class="d-flex gap-1 align-items-center flex-wrap">
+                                    <select class="form-select form-select-sm" style="max-width:180px" id="scat-{{ loop.index }}">
+                                        <option value="">Category...</option>
+                                        {% for cat in categories %}
+                                        <option value="{{ cat.id }}">{{ cat.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <select class="form-select form-select-sm" style="max-width:160px" id="sacct-{{ loop.index }}">
+                                        <option value="">Account (opt)...</option>
+                                        {% for acct in accounts %}
+                                        <option value="{{ acct.id }}">{{ acct.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="button" class="btn btn-sm btn-outline-primary"
+                                            hx-post="/import/add-mapping"
+                                            hx-vals='{"merchant_name": "{{ s.merchant }}"}'
+                                            hx-include="#scat-{{ loop.index }}, #sacct-{{ loop.index }}"
+                                            hx-target="#srow-{{ loop.index }}"
+                                            hx-swap="innerHTML">
+                                        Map
+                                    </button>
+                                </div>
+                            </td>
+                            <td><span class="badge bg-warning text-dark">unmatched</span></td>
+                        </tr>
+                        {% elif s.status == 'payment' %}
+                        <tr class="table-light text-muted">
+                            <td><input type="checkbox" disabled></td>
+                            <td>{{ s.merchant }}</td>
+                            <td>{{ s.date }}</td>
+                            <td class="text-end text-info">{{ s.amount|money }}</td>
+                            <td><small>{{ s.card_last_four }}</small></td>
+                            <td></td>
+                            <td></td>
+                            <td><span class="badge bg-info">payment</span></td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if stmt_summary.ready > 0 %}
+            <button type="submit" class="btn btn-success btn-lg">
+                Commit {{ stmt_summary.ready }} Transaction{{ 's' if stmt_summary.ready != 1 else '' }}
+            </button>
+            <p class="text-muted small mt-1">
+                Uncheck any rows you don't want to import. Duplicates and payments are excluded automatically.
+            </p>
+            {% else %}
+            <div class="alert alert-info">
+                No transactions ready to commit.
+                {% if stmt_summary.unmatched > 0 %}Map the unmatched merchants above, then re-preview.{% endif %}
+                {% if stmt_summary.duplicate > 0 and stmt_summary.unmatched == 0 %}All transactions were already imported.{% endif %}
+            </div>
+            {% endif %}
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{# ══════════════════════════════════════════════════════
+   Bank Account CSV Import
+   ══════════════════════════════════════════════════════ #}
+<hr class="my-5">
+<h3 class="mb-3">Bank Account CSV Import</h3>
+
+{# -- Upload form -- #}
+<div class="card mb-4">
+    <div class="card-header fw-bold">Upload Chase Bank CSV</div>
+    <div class="card-body">
+        <form method="post" action="/import/bank-csv-upload" enctype="multipart/form-data">
+            <div class="row align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label" for="bank-account-select">Bank Account</label>
+                    <select class="form-select" id="bank-account-select" name="last_four" required>
+                        <option value="">Select account...</option>
+                        {% for ba in bank_accounts or [] %}
+                        <option value="{{ ba.last_four }}"
+                                {% if bank_last_four is defined and bank_last_four == ba.last_four %}selected{% endif %}>
+                            {{ ba.label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="bank-csv-file">CSV File</label>
+                    <input type="file" class="form-control" id="bank-csv-file" name="csv_file" accept=".csv,.CSV" required>
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary">Upload & Preview</button>
+                </div>
+            </div>
+            <p class="text-muted small mt-2 mb-0">
+                Only transactions from Sep 2025 onward will be imported. ACCT_XFER and LOAN_PMT are skipped automatically.
+            </p>
+        </form>
+    </div>
+</div>
+
+{# -- Bank CSV Preview -- #}
+{% if bank_step is defined and bank_step == 'preview' and bank_staged is defined %}
+<div class="card mb-4">
+    <div class="card-header fw-bold">
+        Preview: {{ bank_file_name }} (Account {{ bank_last_four }})
+        <span class="badge bg-primary float-end">Review & Commit</span>
+    </div>
+    <div class="card-body">
+        {# Summary bar #}
+        <div class="d-flex gap-3 mb-3 flex-wrap">
+            {% if bank_summary.ready %}
+            <span class="badge bg-success fs-6">{{ bank_summary.ready }} Ready</span>
+            {% endif %}
+            {% if bank_summary.duplicate %}
+            <span class="badge bg-secondary fs-6">{{ bank_summary.duplicate }} Duplicate</span>
+            {% endif %}
+            {% if bank_summary.unmatched %}
+            <span class="badge bg-warning text-dark fs-6">{{ bank_summary.unmatched }} Unmatched</span>
+            {% endif %}
+            {% if bank_summary.skipped %}
+            <span class="badge bg-light text-muted border fs-6">{{ bank_summary.skipped }} Skipped</span>
+            {% endif %}
+        </div>
+
+        {% if bank_summary.unmatched > 0 %}
+        <div class="alert alert-warning py-2">
+            <strong>{{ bank_summary.unmatched }} merchant(s)</strong> have no mapping.
+            Use the dropdowns below to assign a category, then click <strong>Map</strong>.
+            After mapping, re-upload the CSV to refresh.
+        </div>
+        {% endif %}
+
+        <form method="post" action="/import/bank-csv-commit">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th style="width:30px">
+                                <input type="checkbox" id="bank-check-all" checked
+                                       onclick="document.querySelectorAll('#bank-preview-table input[name=commit_refs]:not(:disabled)').forEach(c => c.checked = this.checked)">
+                            </th>
+                            <th>Merchant</th>
+                            <th>Date</th>
+                            <th class="text-end">Amount</th>
+                            <th>Type</th>
+                            <th>Category</th>
+                            <th>Account</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bank-preview-table">
+                        {% for s in bank_staged %}
+                        {% if s.status == 'ready' %}
+                        <tr>
+                            <td><input type="checkbox" name="commit_refs" value="{{ s.source_ref }}" checked></td>
+                            <td>{{ s.merchant }}</td>
+                            <td>{{ s.date }}</td>
+                            <td class="text-end {% if s.direction == 'income' %}text-success{% endif %}">{{ (s.amount|abs)|money }}</td>
+                            <td><small>{{ s.direction }}</small></td>
+                            <td><small>{{ s.category_name }}</small></td>
+                            <td><small>{{ s.account_name }}</small></td>
+                            <td><span class="badge bg-success">ready</span></td>
+                        </tr>
+                        {% elif s.status == 'duplicate' %}
+                        <tr class="table-light text-muted">
+                            <td><input type="checkbox" disabled></td>
+                            <td>{{ s.merchant }}</td>
+                            <td>{{ s.date }}</td>
+                            <td class="text-end">{{ (s.amount|abs)|money }}</td>
+                            <td><small>{{ s.direction }}</small></td>
+                            <td></td>
+                            <td></td>
+                            <td><span class="badge bg-secondary">duplicate</span></td>
+                        </tr>
+                        {% elif s.status == 'unmatched' %}
+                        <tr class="table-warning" id="brow-{{ loop.index }}">
+                            <td><input type="checkbox" disabled></td>
+                            <td><strong>{{ s.merchant }}</strong></td>
+                            <td>{{ s.date }}</td>
+                            <td class="text-end">{{ (s.amount|abs)|money }}</td>
+                            <td><small>{{ s.direction }}</small></td>
+                            <td colspan="2">
+                                <div class="d-flex gap-1 align-items-center flex-wrap">
+                                    <select class="form-select form-select-sm" style="max-width:180px" id="bcat-{{ loop.index }}">
+                                        <option value="">Category...</option>
+                                        {% for cat in categories %}
+                                        <option value="{{ cat.id }}">{{ cat.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <select class="form-select form-select-sm" style="max-width:160px" id="bacct-{{ loop.index }}">
+                                        <option value="">Account (opt)...</option>
+                                        {% for acct in accounts %}
+                                        <option value="{{ acct.id }}">{{ acct.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="button" class="btn btn-sm btn-outline-primary"
+                                            hx-post="/import/add-mapping"
+                                            hx-vals='{"merchant_name": "{{ s.merchant|e }}"}'
+                                            hx-include="#bcat-{{ loop.index }}, #bacct-{{ loop.index }}"
+                                            hx-target="#brow-{{ loop.index }}"
+                                            hx-swap="innerHTML">
+                                        Map
+                                    </button>
+                                </div>
+                            </td>
+                            <td><span class="badge bg-warning text-dark">unmatched</span></td>
+                        </tr>
+                        {% elif s.status == 'skipped' %}
+                        <tr class="text-muted small">
+                            <td><input type="checkbox" disabled></td>
+                            <td>{{ s.merchant }}</td>
+                            <td>{{ s.date }}</td>
+                            <td class="text-end">{{ (s.amount|abs)|money }}</td>
+                            <td><small>{{ s.chase_type }}</small></td>
+                            <td></td>
+                            <td></td>
+                            <td><span class="badge bg-light text-muted border">skipped</span></td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if bank_summary.ready > 0 %}
+            <button type="submit" class="btn btn-success btn-lg">
+                Commit {{ bank_summary.ready }} Transaction{{ 's' if bank_summary.ready != 1 else '' }}
+            </button>
+            <p class="text-muted small mt-1">
+                Uncheck any rows you don't want to import. Duplicates and skipped rows are excluded automatically.
+            </p>
+            {% else %}
+            <div class="alert alert-info">
+                No transactions ready to commit.
+                {% if bank_summary.unmatched > 0 %}Map the unmatched merchants above, then re-upload the CSV.{% endif %}
+                {% if bank_summary.duplicate > 0 and bank_summary.unmatched == 0 %}All transactions were already imported.{% endif %}
+            </div>
+            {% endif %}
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{# ══════════════════════════════════════════════════════
+   Import History (Sheet)
+   ══════════════════════════════════════════════════════ #}
+{% if history %}
+<hr class="my-5">
+<h3 class="mb-3">Import History</h3>
+<div class="card mb-4">
+    <div class="card-header">Google Sheet Imports</div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Month</th>
+                    <th class="text-end">Records</th>
+                    <th class="text-end">Total</th>
+                    <th>Imported</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in history %}
+                <tr>
+                    <td>{{ h.month }}</td>
+                    <td class="text-end">{{ h.count }}</td>
+                    <td class="text-end">{{ h.total|money }}</td>
+                    <td>{{ h.imported_at[:10] if h.imported_at else '' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{# Statement import history #}
+{% if stmt_history is defined and stmt_history %}
+<div class="card mb-4">
+    <div class="card-header">Statement Imports</div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Month</th>
+                    <th class="text-end">Records</th>
+                    <th class="text-end">Total</th>
+                    <th>Imported</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in stmt_history %}
+                <tr>
+                    <td>{{ h.month }}</td>
+                    <td class="text-end">{{ h.count }}</td>
+                    <td class="text-end">{{ h.total|money }}</td>
+                    <td>{{ h.imported_at[:10] if h.imported_at else '' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{# Bank CSV import history #}
+{% if bank_history is defined and bank_history %}
+<div class="card mb-4">
+    <div class="card-header">Bank CSV Imports</div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Month</th>
+                    <th class="text-end">Records</th>
+                    <th class="text-end">Total</th>
+                    <th>Imported</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in bank_history %}
+                <tr>
+                    <td>{{ h.month }}</td>
+                    <td class="text-end">{{ h.count }}</td>
+                    <td class="text-end">{{ h.total|money }}</td>
+                    <td>{{ h.imported_at[:10] if h.imported_at else '' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{# Overlap migration button #}
+<div class="card mb-4 border-warning">
+    <div class="card-header fw-bold text-warning">Data Migration</div>
+    <div class="card-body">
+        <p class="mb-2">
+            After importing bank CSV data, mark overlapping Google Sheet expenses (Sep 2025+) as transfers
+            to avoid double-counting. This changes non-CC Sheet entries to type "transfer" so they're excluded
+            from expense totals.
+        </p>
+        <form method="post" action="/import/mark-sheet-transfers"
+              onsubmit="return confirm('Mark all Google Sheet non-CC expenses from Sep 2025+ as transfers?')">
+            <button type="submit" class="btn btn-outline-warning">
+                Mark Sheet Overlap as Transfers
+            </button>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

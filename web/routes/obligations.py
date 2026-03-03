@@ -7,17 +7,24 @@ obligations_bp = Blueprint("obligations", __name__)
 
 def _match_transactions(obligation, month):
     """Return all transactions in `month` that match this obligation."""
-    patterns = [p.strip() for p in obligation.merchant_pattern.split(",") if p.strip()]
+    patterns = [p.strip() for p in (obligation.merchant_pattern or "").split(",") if p.strip()]
+
+    # Category fallback: no pattern → match all expense txns in that category
+    if not patterns and obligation.category_id:
+        return Transaction.query.filter(
+            Transaction.date.like(f"{month}-%"),
+            Transaction.category_id == obligation.category_id,
+            Transaction.type == "expense",
+        ).all()
+
     if not patterns:
         return []
 
-    txns = (
-        Transaction.query
-        .filter(Transaction.date.like(f"{month}-%"))
-        .filter(Transaction.merchant.in_(patterns))
-        .all()
-    )
-    return txns
+    # ILIKE substring match — handles raw bank CSV names like "ALLSTATE NJ INS", "TMOBILE*AUTO PAY..."
+    return Transaction.query.filter(
+        Transaction.date.like(f"{month}-%"),
+        db.or_(*[Transaction.merchant.ilike(f"%{p}%") for p in patterns]),
+    ).all()
 
 
 def _in_season(obligation, month_num):

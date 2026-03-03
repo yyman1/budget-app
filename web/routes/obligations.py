@@ -112,6 +112,47 @@ def add_obligation():
     return redirect(url_for("obligations.list_obligations", month=month))
 
 
+@obligations_bp.route("/<int:ob_id>/edit-row")
+def edit_row(ob_id):
+    ob = Obligation.query.get_or_404(ob_id)
+    month = request.args.get("month", date.today().strftime("%Y-%m"))
+    return render_template("partials/ob_edit_row.html", ob=ob, month=month)
+
+
+@obligations_bp.route("/<int:ob_id>/display-row")
+def display_row(ob_id):
+    month = request.args.get("month", date.today().strftime("%Y-%m"))
+    month_num = int(month.split("-")[1])
+    ob = Obligation.query.get_or_404(ob_id)
+    in_season = _in_season(ob, month_num)
+    txns = _match_transactions(ob, month) if in_season else []
+    actual = sum(t.amount for t in txns)
+    item = {"obligation": ob, "in_season": in_season, "txns": txns, "actual": actual, "found": bool(txns)}
+    return render_template("partials/ob_display_row.html", item=item, month=month)
+
+
+@obligations_bp.route("/<int:ob_id>/update", methods=["POST"])
+def update_obligation(ob_id):
+    month = request.form.get("month", date.today().strftime("%Y-%m"))
+    ob = Obligation.query.get_or_404(ob_id)
+    ob.name = request.form["name"]
+    ob.merchant_pattern = request.form.get("merchant_pattern", "")
+    ob.section = request.form.get("section", ob.section)
+    ea = request.form.get("expected_amount")
+    ob.expected_amount = float(ea) if ea else None
+    ob.is_fixed = bool(ob.expected_amount)
+    ob.notes = request.form.get("notes", "")
+    ob.month_start = int(request.form.get("month_start", 1))
+    ob.month_end = int(request.form.get("month_end", 12))
+    db.session.commit()
+    month_num = int(month.split("-")[1])
+    in_season = _in_season(ob, month_num)
+    txns = _match_transactions(ob, month) if in_season else []
+    actual = sum(t.amount for t in txns)
+    item = {"obligation": ob, "in_season": in_season, "txns": txns, "actual": actual, "found": bool(txns)}
+    return render_template("partials/ob_display_row.html", item=item, month=month)
+
+
 @obligations_bp.route("/<int:ob_id>/delete", methods=["POST"])
 def delete_obligation(ob_id):
     month = request.form.get("month", date.today().strftime("%Y-%m"))

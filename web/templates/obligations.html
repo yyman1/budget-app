@@ -15,6 +15,7 @@
     .progress-pill.poor { background: #fed7d7; color: #822727; }
     .matched-txns { font-size: 0.78rem; color: #636e72; margin-top: 2px; }
     .add-form { background: #fff; border-radius: 10px; padding: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .ob-subtotal td { background: #f7fafc; border-top: 1px solid #e2e8f0; padding-top: 0.4rem; padding-bottom: 0.4rem; }
 </style>
 {% endblock %}
 
@@ -86,58 +87,24 @@
                     <th colspan="5">{{ section_labels[key] }}</th>
                 </tr>
                 {% for item in rows %}
-                {% set ob = item.obligation %}
-                <tr class="ob-row {% if not item.in_season %}ob-skipped{% elif item.found %}ob-found{% else %}ob-missing{% endif %}">
-                    <td class="text-center">
-                        {% if not item.in_season %}
-                            <span class="status-icon text-muted">–</span>
-                        {% elif item.found %}
-                            <span class="status-icon text-success">✓</span>
-                        {% else %}
-                            <span class="status-icon text-danger">✗</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <div>{{ ob.name }}</div>
-                        {% if item.found and item.txns %}
-                        <div class="matched-txns">
-                            {% for t in item.txns %}{{ t.date }} · {{ t.merchant }}{% if not loop.last %} &nbsp;|&nbsp; {% endif %}{% endfor %}
-                        </div>
-                        {% endif %}
-                        {% if ob.notes %}
-                        <div class="matched-txns fst-italic">{{ ob.notes }}</div>
-                        {% endif %}
-                    </td>
-                    <td class="text-end">
-                        {% if ob.is_fixed and ob.expected_amount %}
-                            {{ ob.expected_amount | money }}
-                        {% elif ob.amount_min and ob.amount_max %}
-                            <span class="text-muted">{{ ob.amount_min | money(0) }}–{{ ob.amount_max | money(0) }}</span>
-                        {% elif ob.expected_amount %}
-                            ~{{ ob.expected_amount | money }}
-                        {% else %}
-                            <span class="text-muted">variable</span>
-                        {% endif %}
-                    </td>
-                    <td class="text-end">
-                        {% if item.found %}
-                            <span class="{% if ob.is_fixed and ob.expected_amount and (item.actual - ob.expected_amount) | abs > 50 %}text-warning fw-600{% else %}text-success fw-600{% endif %}">
-                                {{ item.actual | money }}
-                            </span>
-                        {% elif item.in_season %}
-                            <span class="text-danger">—</span>
-                        {% else %}
-                            <span class="text-muted">—</span>
-                        {% endif %}
-                    </td>
-                    <td class="text-end">
-                        <form method="post" action="/obligations/{{ ob.id }}/delete" onsubmit="return confirm('Delete {{ ob.name }}?')">
-                            <input type="hidden" name="month" value="{{ month }}">
-                            <button class="btn btn-sm btn-link text-danger p-0" title="Delete">✕</button>
-                        </form>
-                    </td>
-                </tr>
+                {% include "partials/ob_display_row.html" %}
                 {% endfor %}
+                {# Section subtotal row #}
+                {% set ns = namespace(exp=0, act=0, has_exp=false) %}
+                {% for item in rows %}
+                    {% if item.obligation.expected_amount %}
+                        {% set ns.exp = ns.exp + item.obligation.expected_amount %}
+                        {% set ns.has_exp = true %}
+                    {% endif %}
+                    {% set ns.act = ns.act + item.actual %}
+                {% endfor %}
+                <tr class="ob-subtotal">
+                    <td></td>
+                    <td class="text-end text-muted" style="font-size:0.8rem; padding-right:0.5rem;">subtotal</td>
+                    <td class="text-end fw-600">{% if ns.has_exp %}{{ ns.exp | money }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    <td class="text-end fw-600">{% if ns.act > 0 %}{{ ns.act | money }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    <td></td>
+                </tr>
                 {% endif %}
             {% endfor %}
             </tbody>

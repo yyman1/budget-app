@@ -1,0 +1,56 @@
+{% set ob = item.obligation %}
+<tr id="ob-{{ ob.id }}" class="ob-row {% if not item.in_season %}ob-skipped{% elif item.found %}ob-found{% else %}ob-missing{% endif %}">
+    <td class="text-center">
+        {% if not item.in_season %}
+            <span class="status-icon text-muted">–</span>
+        {% elif item.found %}
+            <span class="status-icon text-success">✓</span>
+        {% else %}
+            <span class="status-icon text-danger">✗</span>
+        {% endif %}
+    </td>
+    <td>
+        <div>{{ ob.name }}</div>
+        {% if item.found and item.txns %}
+        <div class="matched-txns">
+            {% for t in item.txns %}{{ t.date }} · {{ t.merchant }}{% if not loop.last %} &nbsp;|&nbsp; {% endif %}{% endfor %}
+        </div>
+        {% endif %}
+        {% if ob.notes %}
+        <div class="matched-txns fst-italic">{{ ob.notes }}</div>
+        {% endif %}
+    </td>
+    <td class="text-end">
+        {% if ob.is_fixed and ob.expected_amount %}
+            {{ ob.expected_amount | money }}
+        {% elif ob.amount_min and ob.amount_max %}
+            <span class="text-muted">{{ ob.amount_min | money(0) }}–{{ ob.amount_max | money(0) }}</span>
+        {% elif ob.expected_amount %}
+            ~{{ ob.expected_amount | money }}
+        {% else %}
+            <span class="text-muted">variable</span>
+        {% endif %}
+    </td>
+    <td class="text-end">
+        {% if item.found %}
+            <span class="{% if ob.is_fixed and ob.expected_amount and (item.actual - ob.expected_amount) | abs > 50 %}text-warning fw-600{% else %}text-success fw-600{% endif %}">
+                {{ item.actual | money }}
+            </span>
+        {% elif item.in_season %}
+            <span class="text-danger">—</span>
+        {% else %}
+            <span class="text-muted">—</span>
+        {% endif %}
+    </td>
+    <td class="text-end text-nowrap">
+        <button class="btn btn-sm btn-link text-secondary p-0 me-1"
+                hx-get="/obligations/{{ ob.id }}/edit-row?month={{ month }}"
+                hx-target="#ob-{{ ob.id }}"
+                hx-swap="outerHTML"
+                title="Edit">&#9998;</button>
+        <form method="post" action="/obligations/{{ ob.id }}/delete" onsubmit="return confirm('Delete {{ ob.name }}?')" style="display:inline">
+            <input type="hidden" name="month" value="{{ month }}">
+            <button class="btn btn-sm btn-link text-danger p-0" title="Delete">✕</button>
+        </form>
+    </td>
+</tr>

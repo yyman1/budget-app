@@ -1,0 +1,60 @@
+{% set months_list = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
+<tr id="ob-{{ ob.id }}" class="table-warning">
+    <td colspan="5">
+        <form hx-post="/obligations/{{ ob.id }}/update"
+              hx-target="#ob-{{ ob.id }}"
+              hx-swap="outerHTML"
+              class="d-flex flex-wrap gap-2 align-items-end py-1">
+            <input type="hidden" name="month" value="{{ month }}">
+            <div>
+                <label class="form-label mb-0" style="font-size:0.75rem">Name</label>
+                <input type="text" name="name" value="{{ ob.name }}" class="form-control form-control-sm" style="min-width:160px" required>
+            </div>
+            <div>
+                <label class="form-label mb-0" style="font-size:0.75rem">Pattern(s) <span class="text-muted fw-normal">comma-sep</span></label>
+                <input type="text" name="merchant_pattern" value="{{ ob.merchant_pattern }}" class="form-control form-control-sm" style="min-width:200px">
+            </div>
+            <div>
+                <label class="form-label mb-0" style="font-size:0.75rem">Expected $</label>
+                <input type="number" step="0.01" name="expected_amount" value="{{ ob.expected_amount if ob.expected_amount else '' }}" class="form-control form-control-sm" style="width:100px">
+            </div>
+            <div>
+                <label class="form-label mb-0" style="font-size:0.75rem">Section</label>
+                <select name="section" class="form-select form-select-sm" style="width:130px">
+                    <option value="fixed" {% if ob.section == 'fixed' %}selected{% endif %}>Fixed</option>
+                    <option value="variable" {% if ob.section == 'variable' %}selected{% endif %}>Variable</option>
+                    <option value="credit_card" {% if ob.section == 'credit_card' %}selected{% endif %}>Credit Card</option>
+                    <option value="seasonal" {% if ob.section == 'seasonal' %}selected{% endif %}>Seasonal</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label mb-0" style="font-size:0.75rem">Start</label>
+                <select name="month_start" class="form-select form-select-sm" style="width:80px">
+                    {% for i in range(1,13) %}
+                    <option value="{{ i }}" {% if ob.month_start == i %}selected{% endif %}>{{ months_list[i] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="form-label mb-0" style="font-size:0.75rem">End</label>
+                <select name="month_end" class="form-select form-select-sm" style="width:80px">
+                    {% for i in range(1,13) %}
+                    <option value="{{ i }}" {% if ob.month_end == i %}selected{% endif %}>{{ months_list[i] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="form-label mb-0" style="font-size:0.75rem">Notes</label>
+                <input type="text" name="notes" value="{{ ob.notes }}" class="form-control form-control-sm" style="min-width:120px">
+            </div>
+            <div class="d-flex gap-1 align-items-end">
+                <button type="submit" class="btn btn-sm btn-success" title="Save">&#10003;</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary"
+                        hx-get="/obligations/{{ ob.id }}/display-row?month={{ month }}"
+                        hx-target="#ob-{{ ob.id }}"
+                        hx-swap="outerHTML"
+                        title="Cancel">&#10005;</button>
+            </div>
+        </form>
+    </td>
+</tr>
